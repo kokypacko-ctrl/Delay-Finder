@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Delay Code Finder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f0f4f8;
+    }
+    .chat-container {
+      max-height: 70vh;
+      overflow-y: auto;
+      padding-right: 0.5rem;
+    }
+    .message {
+      max-width: 75%;
+      margin-bottom: 0.75rem;
+      padding: 0.75rem 1rem;
+      border-radius: 1rem;
+      line-height: 1.4;
+    }
+    .user {
+      background-color: #2563eb;
+      color: white;
+      margin-left: auto;
+      border-bottom-right-radius: 0.25rem;
+    }
+    .bot {
+      background-color: #e5e7eb;
+      color: #111827;
+      margin-right: auto;
+      border-bottom-left-radius: 0.25rem;
+    }
+    .typing {
+      display: flex;
+      gap: 4px;
+    }
+    .typing-dot {
+      width: 6px;
+      height: 6px;
+      background: #9ca3af;
+      border-radius: 50%;
+      animation: blink 1.4s infinite both;
+    }
+    .typing-dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+    .typing-dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+    @keyframes blink {
+      0% { opacity: .2; }
+      20% { opacity: 1; }
+      100% { opacity: .2; }
+    }
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+  <div class="w-full max-w-2xl bg-white rounded-2xl shadow-xl flex flex-col h-[90vh]">
+    <div class="px-6 py-4 border-b border-gray-200">
+      <h1 class="text-2xl font-bold text-gray-800 text-center">AI Delay Code Finder</h1>
+      <p class="text-center text-gray-500 text-sm">Ask me about IATA delay codes by number or keyword</p>
+    </div>
+    
+    <!-- Chat Area -->
+    <div id="chat" class="chat-container flex-1 px-6 py-4 overflow-y-auto">
+      <div class="message bot">
+        Hi 👋 I’m your <strong>AI Delay Code Finder</strong>.<br/>
+        Enter an IATA delay code (e.g., <code>22</code>) or a keyword (e.g., <code>baggage</code>), and I’ll explain it to you.
+      </div>
+    </div>
+    
+    <!-- Input Area -->
+    <div class="px-6 py-4 border-t border-gray-200 flex gap-2">
+      <input id="userInput" type="text" placeholder="Type a code or keyword..." 
+        class="flex-grow p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+      <button id="sendButton" 
+        class="bg-blue-600 text-white px-5 py-3 rounded-xl font-semibold hover:bg-blue-700 transition">
+        Send
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const chat = document.getElementById("chat");
+    const userInput = document.getElementById("userInput");
+    const sendButton = document.getElementById("sendButton");
+
+    // === FULL DELAY CODE DATABASE (embedded for portability) ===
+    const delayCodes = new Map([
+      ['1', 'Commercial Request'],
+      ['5', 'CREW LATE TO AIRCRAFT DUE ALCOHOL TESTING i.e. HR mandatory D&A testing or testing on suspicion'],
+      ['6', 'NO GATE STAND AVAILABILITY DUE TO OWN AIRLINE ACTIVITY including early arrivals'],
+      ['9', 'SCHEDULED GROUND TIME LESS THAN DECLARED MINIMUM GROUND TIME'],
+      ['11', 'Late check-in, acceptance after deadline'],
+      ['11E', 'Late check-in - acceptance after deadline - late closure of check in due staff error'],
+      ['11I', 'Late check-in - acceptance after deadline - late closure of check in due system issues, IT equipment (if provided by GHA)'],
+      ['11M', 'Late check-in - acceptance after deadline - late closure of check in due manpower shortage'],
+      ['12', 'Congestion in check-in area'],
+      ['12M', 'Late check-in, congestion in check-in due to lack of check-in staff'],
+      ['12X', 'Late check-in - congestion in check-in area - this is Pax presentation and can be used for peak times'],
+      ['13', 'CHECK-IN ERROR, passenger and baggage'],
+      ['13E', 'CHECK-IN ERROR, passenger (incl PRM and sick passenger) and baggage - staff error'],
+      ['14', 'OVERSALES, booking errors'],
+      ['14I', 'Internal IT failure/downtime/interface issue e.g. Booking & Pricing Engine Error'],
+      ['15', 'BOARDING, discrepancies and paging, missing checked-in passenger, late or slow boarding'],
+      ['15D', 'Slow boarding process (exclude document or security check), longer than allowable PTS'],
+      ['15E', 'Boarding error by gate staff including wrong acceptance or intoxicated passenger'],
+      ['15L', 'Boarding of passengers after gate closure time'],
+      ['15X', 'Collection of excessive hand baggage at boarding gate'],
+      ['16', 'COMMERCIAL PUBLICITY PASSENGER CONVENIENCE limited to VIP, press, ground meals and missing personal items'],
+      ['17', 'CATERING ORDER, late or incorrect order given to supplier'],
+      ['18', 'BAGGAGE PROCESSING, sorting etc. including late delivery'],
+      ['19', 'REDUCED MOBILITY, boarding/deboarding of passengers with reduced mobility'],
+      ['21', 'DOCUMENTATION, errors etc.'],
+      ['22', 'LATE POSITIONING OF CARGO'],
+      ['23', 'LATE ACCEPTANCE OF CARGO at warehouse'],
+      ['24', 'INADEQUATE PACKING'],
+      ['25', 'OVERSALES, booking errors cargo OR mail'],
+      ['26', 'LATE PREPARATION IN WAREHOUSE'],
+      ['27', 'DOCUMENTATION, PACKING etc. (Mail Only)'],
+      ['28', 'LATE POSITIONING (Mail Only)'],
+      ['29', 'LATE ACCEPTANCE (Mail Only)'],
+      ['31', 'AIRCRAFT DOCUMENTATION LATE INACCURATE, weight and balance, pax manifest, etc.'],
+      ['32', 'LOADING/UNLOADING, bulky, special load, cabin load, lack of loading staff'],
+      ['33', 'EQUIPMENT, lack of or error of staff'],
+      ['34', 'SERVICING EQUIPMENT, lack of or breakdown'],
+      ['35', 'AIRCRAFT CLEANING'],
+      ['36', 'FUELLING/DEFUELLING, fuel supplier'],
+      ['37', 'CATERING, late delivery or loading'],
+      ['38', 'ULD, lack of or serviceability'],
+      ['39', 'TECHNICAL EQUIPMENT, lack of or breakdown'],
+      ['41', 'AIRCRAFT DEFECTS'],
+      ['42', 'SCHEDULED MAINTENANCE, late release'],
+      ['43', 'NON-SCHEDULED MAINTENANCE, additional works'],
+      ['44', 'SPARES AND MAINTENANCE EQUIPMENT, lack of or breakdown'],
+      ['45', 'AOG SPARES, to be carried to another station'],
+      ['46', 'AIRCRAFT CHANGE, for technical reasons'],
+      ['47', 'STAND-BY AIRCRAFT unavailable'],
+      ['51', 'DAMAGE DURING FLIGHT OPERATIONS, bird or lightning strike, turbulence, overweight landing, taxiing collision'],
+      ['52', 'DAMAGE DURING GROUND OPERATIONS, collisions, loading damage, contamination, towing'],
+      ['55', 'DEPARTURE CONTROL SYSTEMS failure'],
+      ['56', 'CARGO PREPARATION DOCUMENTATION failure'],
+      ['57', 'FLIGHT PLAN SYSTEMS'],
+      ['58', 'OTHER AUTOMATED SYSTEM'],
+      ['61', 'FLIGHT PLAN issues, revisions, or IT failure'],
+      ['62', 'OPERATIONAL REQUIREMENTS, fuel, load alteration'],
+      ['63', 'LATE CREW BOARDING OR DEPARTURE PROCEDURES'],
+      ['64', 'FLIGHT DECK CREW SHORTAGE'],
+      ['65', 'FLIGHT DECK CREW SPECIAL REQUEST'],
+      ['66D', 'Slow embarkation/settling onboard'],
+      ['67', 'CABIN CREW SHORTAGE'],
+      ['68', 'CABIN CREW ERROR OR SPECIAL REQUEST'],
+      ['69', 'CAPTAIN REQUEST FOR SECURITY CHECK'],
+      ['71', 'DEPARTURE STATION issues'],
+      ['72', 'DESTINATION STATION issues'],
+      ['73', 'EN ROUTE OR ALTERNATE airport issues'],
+      ['75', 'DE-ICING OF AIRCRAFT'],
+      ['76', 'REMOVAL OF SNOW, ICE, WATER AND SAND FROM AIRPORT'],
+      ['77', 'GROUND HANDLING IMPAIRED BY ADVERSE WEATHER'],
+      ['81', 'ATFM due to ATC EN-ROUTE DEMAND/CAPACITY'],
+      ['82', 'ATFM due to ATC STAFF/EQUIPMENT issues'],
+      ['83', 'ATFM due to RESTRICTION AT DESTINATION AIRPORT'],
+      ['84', 'ATFM due to WEATHER AT DESTINATION'],
+      ['85', 'MANDATORY SECURITY'],
+      ['86', 'IMMIGRATION, CUSTOMS, HEALTH'],
+      ['87', 'AIRPORT FACILITIES issues'],
+      ['88', 'RESTRICTIONS AT DESTINATION AIRPORT'],
+      ['89', 'RESTRICTIONS AT DEPARTURE AIRPORT'],
+      ['91', 'LOAD CONNECTION, awaiting load from another flight'],
+      ['92', 'THROUGH CHECK-IN ERROR'],
+      ['93', 'AIRCRAFT ROTATION, late arrival of aircraft'],
+      ['94', 'CABIN CREW ROTATION'],
+      ['95', 'CREW ROTATION'],
+      ['96', 'OPERATIONS CONTROL, rerouting/diversion/aircraft change'],
+      ['97', 'INDUSTRIAL ACTION WITH OWN AIRLINE'],
+      ['98', 'INDUSTRIAL ACTION OUTSIDE OWN AIRLINE'],
+      ['99', 'OTHER REASON not matching any code above'],
+    ]);
+
+    // Utility: add message bubble
+    function addMessage(text, sender = "bot") {
+      const msg = document.createElement("div");
+      msg.classList.add("message", sender);
+      msg.innerHTML = text;
+      chat.appendChild(msg);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    // Typing indicator
+    function showTyping() {
+      const typing = document.createElement("div");
+      typing.classList.add("message", "bot");
+      typing.innerHTML = `
+        <div class="typing">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>`;
+      chat.appendChild(typing);
+      chat.scrollTop = chat.scrollHeight;
+      return typing;
+    }
+
+    // Process user input
+    async function processInput() {
+      const query = userInput.value.trim().toUpperCase();
+      if (!query) return;
+      addMessage(query, "user");
+      userInput.value = "";
+
+      const typing = showTyping();
+      await new Promise(r => setTimeout(r, 600));
+      typing.remove();
+
+      const results = [];
+      for (let [code, description] of delayCodes.entries()) {
+        if (
+          code.includes(query) ||
+          description.toUpperCase().includes(query)
+        ) {
+          results.push({ code, description });
+        }
+      }
+
+      if (results.length > 0) {
+        let html = `<p>Here’s what I found for <strong>${query}</strong>:</p>`;
+        results.slice(0,5).forEach(r => {
+          html += `<div class="mt-2"><strong>${r.code}</strong>: ${r.description}</div>`;
+        });
+        if (results.length > 5) {
+          html += `<p class="mt-2 text-sm text-gray-500">(${results.length-5} more results not shown)</p>`;
+        }
+        addMessage(html, "bot");
+      } else {
+        addMessage(`❌ Sorry, I couldn’t find anything for <strong>${query}</strong>. Try another code or keyword.`, "bot");
+      }
+    }
+
+    // Event listeners
+    sendButton.addEventListener("click", processInput);
+    userInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") processInput();
+    });
+  </script>
+</body>
+</html>
